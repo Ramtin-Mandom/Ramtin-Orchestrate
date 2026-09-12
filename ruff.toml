@@ -1,0 +1,8 @@
+# Match the Python version supported by the Milestone 1 foundation.
+target-version = "py38"
+
+[lint]
+extend-select = ["I", "UP", "RUF", "FURB", "PL"]
+
+[lint.pyupgrade]
+keep-runtime-typing = true
