@@ -9,6 +9,7 @@ from .records import (
     RecurringExpense,
     Transaction,
 )
+from .spending import SpendingChange
 
 __all__ = [
     "DecisionResult",
@@ -18,5 +19,6 @@ __all__ = [
     "PendingPayment",
     "PurchaseRequest",
     "RecurringExpense",
+    "SpendingChange",
     "Transaction",
 ]

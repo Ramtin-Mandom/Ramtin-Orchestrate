@@ -148,7 +148,10 @@ activemq-data/
 *.sage.py
 
 # Environments
+# Local secrets, environment variants, and backups; keep the safe template.
 .env
+.env.*
+!.env.example
 .envrc
 .venv
 env/
