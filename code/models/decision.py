@@ -3,10 +3,11 @@
 from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal
-from typing import List, Optional
+from typing import List, Optional, Union
 
 from .money import validate_money
 from .records import PendingPayment
+from .spending import SpendingChange
 
 
 @dataclass
@@ -28,7 +29,9 @@ class DecisionResult:
     recommended_payment_method: Optional[str] = None
     payment_plan: Optional[PaymentPlan] = None
     earliest_date_for_full_payment: Optional[date] = None
-    spending_changes_needed: List[str] = field(default_factory=list)
+    spending_changes_needed: List[Union[str, SpendingChange]] = field(
+        default_factory=list
+    )
     decision_explanation: str = ""
 
     def __post_init__(self) -> None:
