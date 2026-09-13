@@ -1,2 +1,3 @@
 pytest
 ruff
+openai>=1.40.0

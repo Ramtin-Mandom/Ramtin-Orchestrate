@@ -14,6 +14,13 @@ class RequestsCSVError(ValueError):
     """A CSV header or row cannot be converted to a purchase request."""
 
 
+@dataclass(frozen=True)
+class RequestRowFailure:
+    number: int
+    request_id: str
+    exception_type: str
+
+
 @dataclass
 class LoadedRequest(PurchaseRequest):
     """A PurchaseRequest retaining all original CSV values, including IDs."""
@@ -48,11 +55,14 @@ def _parse_row(source: Dict[str, str]) -> LoadedRequest:
     )
 
 
-def load_requests_csv(path: Union[str, Path]) -> List[LoadedRequest]:
+def load_requests_csv(path: Union[str, Path], *, on_row_error=None, required_headers=()) -> List[LoadedRequest]:
     """Read UTF-8 CSV; amount is required, other model columns are optional.
 
     Extra columns are retained verbatim in each request's source_fields.
     Error row numbers are physical CSV line numbers (the header is line 1).
+    With on_row_error, invalid purchase rows are reported as RequestRowFailure
+    and omitted; structural CSV/header errors still raise RequestsCSVError.
+    The default remains strict for existing standalone callers.
     """
     requests = []
     with open(path, encoding="utf-8-sig", newline="") as stream:
@@ -67,13 +77,18 @@ def load_requests_csv(path: Union[str, Path]) -> List[LoadedRequest]:
                 raise RequestsCSVError(f"{path}: header contains duplicate field names")
             if "amount" not in headers:
                 raise RequestsCSVError(f"{path}: header missing required field 'amount'")
-            for row in reader:
+            if any(header not in headers for header in required_headers):
+                raise RequestsCSVError("missing required CSV headers")
+            for number, row in enumerate(reader, start=1):
                 if None in row:
                     raise RequestsCSVError(f"{path}: row {reader.line_num}: too many fields")
                 source = {name: value if value is not None else "" for name, value in row.items()}
                 try:
                     requests.append(_parse_row(source))
                 except ValueError as exc:
+                    if on_row_error is not None:
+                        on_row_error(RequestRowFailure(number, source.get("request_id", ""), type(exc).__name__))
+                        continue
                     raise RequestsCSVError(f"{path}: row {reader.line_num}: {exc}") from exc
         except csv.Error as exc:
             raise RequestsCSVError(f"{path}: row {reader.line_num}: malformed CSV: {exc}") from exc
