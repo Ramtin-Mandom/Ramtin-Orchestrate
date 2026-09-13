@@ -1,4 +1,4 @@
-"""Load purchase requests using the existing model's field names."""
+"""Load challenge requests or the separate legacy model-named input format."""
 
 import csv
 from dataclasses import dataclass, field
@@ -7,11 +7,37 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Dict, List, Union
 
-from models import PurchaseRequest
+from models import ChallengeRequest, PurchaseRequest, RequestType, SourceProvenance
+from models.validation import parse_boolean, parse_date
+
+CHALLENGE_HEADERS = (
+    "request_id", "user_id", "request_date", "request_type", "requested_amount",
+    "desired_completion_date", "allows_partial_payment", "request_text",
+)
+
+
+def _parse_challenge_row(source, path, row_number):
+    try:
+        amount = Decimal(source["requested_amount"])
+    except InvalidOperation as exc:
+        raise ValueError("requested_amount must be a decimal number") from exc
+    return ChallengeRequest(
+        request_id=source["request_id"], user_id=source["user_id"],
+        request_date=parse_date("request_date", source["request_date"]),
+        request_type=RequestType(source["request_type"]), requested_amount=amount,
+        desired_completion_date=parse_date(
+            "desired_completion_date", source["desired_completion_date"]
+        ),
+        allows_partial_payment=parse_boolean(
+            "allows_partial_payment", source["allows_partial_payment"]
+        ),
+        request_text=source["request_text"], source_fields=source,
+        provenance=SourceProvenance(str(Path(path).resolve()), row_number),
+    )
 
 
 class RequestsCSVError(ValueError):
-    """A CSV header or row cannot be converted to a purchase request."""
+    """A CSV header or row cannot be converted to a request."""
 
 
 @dataclass(frozen=True)
@@ -55,8 +81,12 @@ def _parse_row(source: Dict[str, str]) -> LoadedRequest:
     )
 
 
-def load_requests_csv(path: Union[str, Path], *, on_row_error=None, required_headers=()) -> List[LoadedRequest]:
-    """Read UTF-8 CSV; amount is required, other model columns are optional.
+def load_requests_csv(path: Union[str, Path], *, on_row_error=None, required_headers=()) -> List[Union[LoadedRequest, ChallengeRequest]]:
+    """Read UTF-8 CSV with strict challenge fields or legacy amount fields.
+
+    Any challenge-specific header selects the complete challenge schema.
+    Challenge records carry typed IDs, dates, booleans and source provenance.
+    Legacy inputs remain supported as a separate format for existing callers.
 
     Extra columns are retained verbatim in each request's source_fields.
     Error row numbers are physical CSV line numbers (the header is line 1).
@@ -75,7 +105,13 @@ def load_requests_csv(path: Union[str, Path], *, on_row_error=None, required_hea
                 raise RequestsCSVError(f"{path}: header contains an empty field name")
             if len(headers) != len(set(headers)):
                 raise RequestsCSVError(f"{path}: header contains duplicate field names")
-            if "amount" not in headers:
+            challenge = any(name in headers for name in (
+                "requested_amount", "request_type", "allows_partial_payment",
+                "desired_completion_date", "user_id", "request_text",
+            ))
+            if challenge and any(name not in headers for name in CHALLENGE_HEADERS):
+                raise RequestsCSVError("missing required challenge CSV headers")
+            if not challenge and "amount" not in headers:
                 raise RequestsCSVError(f"{path}: header missing required field 'amount'")
             if any(header not in headers for header in required_headers):
                 raise RequestsCSVError("missing required CSV headers")
@@ -84,8 +120,13 @@ def load_requests_csv(path: Union[str, Path], *, on_row_error=None, required_hea
                     raise RequestsCSVError(f"{path}: row {reader.line_num}: too many fields")
                 source = {name: value if value is not None else "" for name, value in row.items()}
                 try:
-                    requests.append(_parse_row(source))
-                except ValueError as exc:
+                    if challenge and any(value is None for value in row.values()):
+                        raise ValueError("record has missing fields")
+                    requests.append(
+                        _parse_challenge_row(source, path, reader.line_num)
+                        if challenge else _parse_row(source)
+                    )
+                except (ValueError, TypeError) as exc:
                     if on_row_error is not None:
                         on_row_error(RequestRowFailure(number, source.get("request_id", ""), type(exc).__name__))
                         continue

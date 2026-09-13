@@ -135,7 +135,7 @@ def test_log_level_is_observational_and_cli_output_unchanged(caplog, tmp_path, c
     assert first.read_bytes() == second.read_bytes()
     assert not caplog.records
     capsys.readouterr()
-    main(["--input", str(source), "--media-root", str(tmp_path / "media"),
+    main(["--mode", "legacy", "--input", str(source), "--media-root", str(tmp_path / "media"),
           "--output", str(second), "--log-level", "error"])
     captured = capsys.readouterr()
     assert captured.out == f"Wrote 1 decisions to {second}.\n"

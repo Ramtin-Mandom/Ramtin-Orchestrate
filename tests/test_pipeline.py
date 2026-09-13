@@ -10,6 +10,7 @@ from unittest.mock import Mock
 import pipeline
 import pytest
 from extraction.media_extractor import ExtractedFact, FileExtraction
+from loaders import load_requests_csv
 from main import main
 from models import DecisionResult
 from models.decision_values import INSTALLMENTS, PAY_IN_FULL
@@ -228,7 +229,7 @@ def test_empty_input_writes_header_only(tmp_path):
 def test_cli_run_and_invalid_args(tmp_path, capsys):
     source = write_input(tmp_path, [{"request_date": ""}])
     output = tmp_path / "output.csv"
-    main(["--input", str(source), "--media-root", str(tmp_path / "media"),
+    main(["--mode", "legacy", "--input", str(source), "--media-root", str(tmp_path / "media"),
           "--output", str(output), "--as-of-date", "2026-09-12", "--horizon-days", "90"])
     assert "Wrote 1 decisions" in capsys.readouterr().out
     assert read_output(output)[0]["request_id"] == "0001"
@@ -268,16 +269,19 @@ def test_invalid_horizon_fails_before_extraction(tmp_path, days):
 def test_cli_required_data_error_is_clear_and_safe(tmp_path, capsys):
     source = write_input(tmp_path, [{"amount": "private invalid value"}])
     with pytest.raises(SystemExit) as error:
-        main(["--input", str(source), "--output", str(tmp_path / "output.csv")])
+        main(["--mode", "legacy", "--input", str(source), "--output", str(tmp_path / "output.csv")])
     assert error.value.code == 1
     stderr = capsys.readouterr().err
     assert "failed requests=1" in stderr
     assert "private invalid value" not in stderr
 
 
-def test_raw_challenge_schema_fails_clearly_without_dataset_join_guessing(tmp_path):
+def test_challenge_request_loader_accepts_authoritative_schema(tmp_path):
     source = tmp_path / "requests.csv"
-    source.write_text("request_id,user_id,requested_amount,request_date\n"
-                      "0001,user_1,100,2026-09-12\n", encoding="utf-8")
-    with pytest.raises(PipelineError, match="required amount column"):
-        run_pipeline(source, tmp_path / "media", tmp_path / "output.csv", extractor=Mock())
+    source.write_text("request_id,user_id,request_date,request_type,requested_amount,"
+                      "desired_completion_date,allows_partial_payment,request_text\n"
+                      "0001,user_1,2026-09-12,travel,100,2026-10-01,false,Can I travel?\n",
+                      encoding="utf-8")
+    request, = load_requests_csv(source)
+    assert request.requested_amount == Decimal(100)
+    assert request.user_id == "user_1"

@@ -16,6 +16,7 @@ from loaders import (
     load_requests_csv,
 )
 from logging_config import request_logger, safe_log_value
+from models import ChallengeRequest
 from output import validate_decision_output, write_decisions_csv
 
 DEFAULT_HORIZON_DAYS = 90
@@ -73,6 +74,11 @@ def _prepare(loaded, number, as_of_date, horizon_days, warn):
         logger.error("Structured input rejected (%s)", safe_log_value(type(exc).__name__))
         raise RequestError(f"request {number}: invalid structured financial data") from None
     profile = normalized.profile
+    if isinstance(loaded, ChallengeRequest):
+        raise RequestError(
+            f"request {number}: supporting CSV context is required; "
+            "use loaders.load_dataset for challenge loading"
+        )
     if profile.account_balance is None:
         logger.error("Input rejected: missing account balance")
         raise RequestError(f"request {number}: account_balance is required")

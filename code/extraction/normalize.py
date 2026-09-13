@@ -4,10 +4,11 @@ import json
 from dataclasses import dataclass, fields
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Union
 
 from loaders import LoadedRequest
 from models import (
+    ChallengeRequest,
     FinancialProfile,
     Income,
     PendingPayment,
@@ -27,7 +28,7 @@ class NormalizedRequest:
     """Container for existing financial models and untouched source metadata."""
 
     profile: FinancialProfile
-    purchase: PurchaseRequest
+    purchase: Union[PurchaseRequest, ChallengeRequest]
     source_fields: Dict[str, str]
     request_id: Optional[str] = None
 
@@ -125,14 +126,18 @@ def _entries(value, name: str, model) -> List:
     return result
 
 
-def normalize_request(request: LoadedRequest, *, on_optional_warning=None) -> NormalizedRequest:
+def normalize_request(request: Union[LoadedRequest, ChallengeRequest], *, on_optional_warning=None) -> NormalizedRequest:
     """Normalize model-named source fields and JSON arrays of model fields.
 
-    Purchase fields come from the loaded object. All metadata is copied raw.
+    Challenge requests retain their schema and have no inferred profile.
+    Legacy purchase fields come from the loaded object. All metadata is copied raw.
     current_balance is an explicit alias for account_balance; conflicting
     values fail. No dates, frequencies, categories or balances are inferred.
     """
     source = dict(request.source_fields)
+    if isinstance(request, ChallengeRequest):
+        # Financial context comes from supporting files, never request-row JSON.
+        return NormalizedRequest(FinancialProfile(), request, source, request.request_id)
     balance = _money(
         source.get("account_balance"), "account_balance", allow_negative=True
     )
