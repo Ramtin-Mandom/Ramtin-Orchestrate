@@ -125,7 +125,7 @@ def _entries(value, name: str, model) -> List:
     return result
 
 
-def normalize_request(request: LoadedRequest) -> NormalizedRequest:
+def normalize_request(request: LoadedRequest, *, on_optional_warning=None) -> NormalizedRequest:
     """Normalize model-named source fields and JSON arrays of model fields.
 
     Purchase fields come from the loaded object. All metadata is copied raw.
@@ -141,10 +141,17 @@ def normalize_request(request: LoadedRequest) -> NormalizedRequest:
     )
     if balance is not None and current is not None and balance != current:
         raise NormalizationError("current_balance: conflicts with account_balance")
+    try:
+        savings = _money(source.get("savings_balance"), "savings_balance")
+    except NormalizationError:
+        if on_optional_warning is None:
+            raise
+        on_optional_warning("savings_balance")
+        savings = None
     profile = FinancialProfile(
         currency=_text(source.get("currency"), "currency"),
         account_balance=balance if balance is not None else current,
-        savings_balance=_money(source.get("savings_balance"), "savings_balance"),
+        savings_balance=savings,
         minimum_balance=_money(source.get("minimum_balance"), "minimum_balance"),
         preferred_balance=_money(source.get("preferred_balance"), "preferred_balance"),
         transactions=_entries(source.get("transactions"), "transactions", Transaction),

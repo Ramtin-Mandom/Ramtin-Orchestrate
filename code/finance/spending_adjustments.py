@@ -36,6 +36,8 @@ def _payment_positions(candidate, forecast) -> Dict[int, Decimal]:
     total = Decimal(0)
     for index, payment in enumerate(candidate.payments):
         _required_money(f"payments[{index}].amount", payment.amount)
+        if payment.amount <= 0:
+            raise ValueError(f"payments[{index}].amount must be positive")
         if payment.due_date not in positions:
             raise ValueError(
                 f"payments[{index}].due_date must be today or an existing forecast date"
